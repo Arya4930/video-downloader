@@ -1,65 +1,181 @@
-import Image from "next/image";
+"use client";
+
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { ArrowDownToLine, Link as LinkIcon, LoaderCircle, Play } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+
+function getFileNameFromDisposition(contentDisposition: string | null): string {
+  if (!contentDisposition) {
+    return "video.mp4";
+  }
+
+  const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return match?.[1] ?? "video.mp4";
+}
 
 export default function Home() {
+  const [videoLink, setVideoLink] = useState("");
+  const [status, setStatus] = useState("Idle");
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const [downloadFileName, setDownloadFileName] = useState("video.mp4");
+  const blobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+    };
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!videoLink.trim()) {
+      setError("Please paste a valid video link.");
+      return;
+    }
+
+    try {
+      new URL(videoLink);
+    } catch {
+      setError("That URL format looks invalid.");
+      return;
+    }
+
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+    const endpoint = `${apiBase}/api/download?url=${encodeURIComponent(videoLink)}`;
+
+    setError(null);
+    setStatus("Preparing download...");
+    setIsDownloading(true);
+    setProgress(5);
+
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+      setVideoBlobUrl(null);
+    }
+
+    const request = new XMLHttpRequest();
+    request.open("GET", endpoint, true);
+    request.responseType = "blob";
+
+    const progressTimer = setInterval(() => {
+      setProgress((current) => (current < 90 ? current + 2 : current));
+    }, 250);
+
+    request.onprogress = (downloadEvent) => {
+      if (downloadEvent.lengthComputable && downloadEvent.total > 0) {
+        const nextProgress = Math.round((downloadEvent.loaded / downloadEvent.total) * 100);
+        setProgress(Math.max(5, Math.min(nextProgress, 99)));
+      }
+    };
+
+    request.onload = () => {
+      clearInterval(progressTimer);
+
+      if (request.status < 200 || request.status >= 300) {
+        setStatus("Failed");
+        setIsDownloading(false);
+        setProgress(0);
+        setError("Download failed. Check the link and try again.");
+        return;
+      }
+
+      const fileName = getFileNameFromDisposition(request.getResponseHeader("content-disposition"));
+      const blob = request.response;
+      const objectUrl = URL.createObjectURL(blob);
+
+      blobUrlRef.current = objectUrl;
+      setDownloadFileName(fileName);
+      setVideoBlobUrl(objectUrl);
+      setProgress(100);
+      setStatus("Ready");
+      setIsDownloading(false);
+    };
+
+    request.onerror = () => {
+      clearInterval(progressTimer);
+      setStatus("Failed");
+      setIsDownloading(false);
+      setProgress(0);
+      setError("Network error while downloading video.");
+    };
+
+    request.send();
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-linear-to-br from-zinc-950 via-zinc-900 to-stone-950 p-4">
+      <div className="pointer-events-none absolute -top-32 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-white/5 blur-3xl" />
+      <Card className="relative w-full max-w-2xl border border-white/10 bg-zinc-900/90 shadow-2xl shadow-black/30 backdrop-blur">
+        <CardHeader>
+          <CardTitle className="text-2xl">Video Downloader</CardTitle>
+          <CardDescription>Insert video link below to download</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <form className="space-y-3" onSubmit={handleSubmit}>
+            <label className="sr-only" htmlFor="video-link">
+              Video URL
+            </label>
+            <div className="flex items-center gap-2">
+              <div className="relative grow">
+                <LinkIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="video-link"
+                  className="h-10 pl-8"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={videoLink}
+                  onChange={(event) => setVideoLink(event.target.value)}
+                />
+              </div>
+              <Button className="h-10 px-4" type="submit" disabled={isDownloading}>
+                {isDownloading ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
+                {isDownloading ? "Downloading" : "Download"}
+              </Button>
+            </div>
+          </form>
+
+          {(isDownloading || progress > 0) && (
+            <section className="space-y-2">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>{status}</span>
+                <span>{progress}%</span>
+              </div>
+              <Progress value={progress} className="h-2" />
+            </section>
+          )}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          {videoBlobUrl && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Play className="size-4" />
+                <span>Preview</span>
+              </div>
+              <video
+                className="w-full rounded-lg border border-white/10 bg-black"
+                controls
+                preload="metadata"
+                src={videoBlobUrl}
+              />
+              <Button asChild variant="outline">
+                <a href={videoBlobUrl} download={downloadFileName}>
+                  Save Video
+                </a>
+              </Button>
+            </section>
+          )}
+        </CardContent>
+      </Card>
+    </main>
   );
 }
