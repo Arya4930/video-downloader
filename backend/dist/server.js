@@ -20,7 +20,7 @@ app.use((req, res, next) => {
     next();
 });
 app.use("/api/download", download_1.default);
-const PORT = process.env.PORT || 3000;
+const PORT = 9000;
 app.listen(PORT, async () => {
     console.log(`🚀 Express TS server running on port ${PORT}`);
 });
