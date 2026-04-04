@@ -8,7 +8,7 @@ exports.getVideoTitle = getVideoTitle;
 const yt_dlp_wrap_1 = __importDefault(require("yt-dlp-wrap"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
-const ytDlpBinaryPath = path_1.default.join(__dirname, 'yt-dlp.exe');
+const ytDlpBinaryPath = path_1.default.join(__dirname, 'yt-dlp');
 function sanitizeVideoTitle(title) {
     return title
         .trim()
@@ -44,10 +44,14 @@ async function DownloadVideoToFile(videoURL, outputFilePath, onProgress) {
             const ytDlpEventEmitter = ytDlpWrap.exec([
                 videoURL,
                 '--no-playlist',
-                '-f',
-                'best[height<=1080][ext=mp4]/best[height<=1080]/best',
                 '--newline',
                 '--no-warnings',
+                '--cookies',
+                '/home/ubuntu/video-downloader/cookies.txt',
+                '--user-agent',
+                'Mozilla/5.0',
+                '--merge-output-format',
+                'mp4',
                 '-o',
                 outputFilePath
             ]);

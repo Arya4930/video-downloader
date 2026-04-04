@@ -2,7 +2,7 @@ import YTDlpWrap from 'yt-dlp-wrap';
 import path from 'path';
 import fs from 'fs';
 
-const ytDlpBinaryPath = path.join(__dirname, 'yt-dlp.exe');
+const ytDlpBinaryPath = path.join(__dirname, 'yt-dlp');
 
 function sanitizeVideoTitle(title: string): string {
     return title
@@ -53,10 +53,14 @@ export async function DownloadVideoToFile(
             const ytDlpEventEmitter = ytDlpWrap.exec([
                 videoURL,
                 '--no-playlist',
-                '-f',
-                'best[height<=1080][ext=mp4]/best[height<=1080]/best',
                 '--newline',
                 '--no-warnings',
+                '--cookies',
+                '/home/ubuntu/video-downloader/cookies.txt',
+                '--user-agent',
+                'Mozilla/5.0',
+                '--merge-output-format',
+                'mp4',
                 '-o',
                 outputFilePath
             ]);
