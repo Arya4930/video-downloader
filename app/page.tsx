@@ -7,6 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 
+const API_BASE =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:9000"
+    : "https://downloader.uni-cc.site";
+
 function getFileNameFromDisposition(contentDisposition: string | null): string {
   if (!contentDisposition) {
     return "video.mp4";
@@ -71,8 +76,7 @@ export default function Home() {
       return;
     }
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-    const endpoint = `${apiBase}/api/download?stream=1&url=${encodeURIComponent(videoLink)}`;
+    const endpoint = `${API_BASE}/api/download?stream=1&url=${encodeURIComponent(videoLink)}`;
 
     setError(null);
     setStatus("Preparing download...");
