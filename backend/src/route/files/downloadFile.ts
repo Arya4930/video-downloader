@@ -1,91 +1,27 @@
 import { Router } from "express";
 import express from "express";
-import { connectDB } from "../../lib/clients/mongodb";
-import { maskUserID } from "../../lib/mask";
-import User from "../../lib/models/Users";
+import path from "path";
 import { StreamFileFromS3 } from "../../lib/clients/s3";
 
 const router: Router = express.Router({ mergeParams: true });
+const TEMP_FOLDER = "temp";
 
-/**
- * @openapi
- * /api/files/download/{userID}/{fileID}:
- *   get:
- *     tags:
- *       - Files
- *     security: []
- *     summary: Download a file belonging to a user
- *     parameters:
- *       - in: path
- *         name: userID
- *         required: true
- *         schema:
- *           type: string
- *           example: 24BCE1234
- *       - in: path
- *         name: fileID
- *         required: true
- *         schema:
- *           type: string
- *           example: file_abc123
- *     responses:
- *       200:
- *         content:
- *           application/octet-stream:
- *             schema:
- *               type: string
- *               format: binary
- *       404:
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: File not found
- *       410:
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: File has expired
- *       500:
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
- */
+function getOriginalName(fileID: string): string {
+    return path.posix.basename(fileID).replace(/^[0-9a-fA-F-]{36}-/, "");
+}
 
 router.get("/:userID/:fileID", async (req, res) => {
     try {
-        await connectDB();
-        const { userID, fileID } = req.params;
-
-        const maskedID = maskUserID(userID.toUpperCase());
-
-        const user = await User.findOne({ UserID: maskedID });
-        if(!user) {
-            return res.status(404).json({ error: "User not found" });
+        const { fileID } = req.params;
+        if (!fileID) {
+            return res.status(400).json({ error: "Invalid file request" });
         }
 
-        const file = user.files.find((f) => f.fileID === fileID);
-        if(!file) {
-            return res.status(404).json({ error: "File not found" });
-        }
-
-        if(file.expiresAt && new Date(file.expiresAt) < new Date()) {
-            return res.status(410).json({ error: "File has expired" });
-        }
-
-        await StreamFileFromS3(fileID, res, file.name);
+        await StreamFileFromS3(
+            `${TEMP_FOLDER}/${path.posix.basename(fileID)}`,
+            res,
+            getOriginalName(fileID)
+        );
     } catch (error) {
         console.error("Download Error:", error);
         res.status(500).json({ error: "Internal server error" });

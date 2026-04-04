@@ -3,12 +3,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DownloadVideo = DownloadVideo;
+exports.DownloadVideoToFile = DownloadVideoToFile;
 exports.getVideoTitle = getVideoTitle;
 const yt_dlp_wrap_1 = __importDefault(require("yt-dlp-wrap"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const ytDlpBinaryPath = path_1.default.join(__dirname, 'yt-dlp.exe');
+function sanitizeVideoTitle(title) {
+    return title
+        .trim()
+        .replace(/[<>:"'/\\|?*]+/g, '')
+        .replace(/\s+/g, '-');
+}
 async function ensureYTDlpBinary() {
     if (!fs_1.default.existsSync(ytDlpBinaryPath)) {
         console.log('Downloading yt-dlp binary...');
@@ -25,19 +31,41 @@ async function ensureYTDlpBinary() {
         console.log('yt-dlp binary already exists.');
     }
 }
-async function DownloadVideo(videoURL) {
+async function DownloadVideoToFile(videoURL, outputFilePath, onProgress) {
     try {
         await ensureYTDlpBinary();
+        const outputDir = path_1.default.dirname(outputFilePath);
+        if (!fs_1.default.existsSync(outputDir)) {
+            fs_1.default.mkdirSync(outputDir, { recursive: true });
+        }
         const ytDlpWrap = new yt_dlp_wrap_1.default(ytDlpBinaryPath);
-        console.log('Starting video download stream...');
-        return ytDlpWrap.execStream([
-            videoURL,
-            '-f',
-            'bv*[height=1080]',
-            '-o',
-            '-',
-            '--no-audio'
-        ]);
+        console.log('Starting video download...');
+        await new Promise((resolve, reject) => {
+            const ytDlpEventEmitter = ytDlpWrap.exec([
+                videoURL,
+                '--no-playlist',
+                '-f',
+                'best[height<=1080][ext=mp4]/best[height<=1080]/best',
+                '--newline',
+                '--no-warnings',
+                '-o',
+                outputFilePath
+            ]);
+            ytDlpEventEmitter.on('progress', (progress) => {
+                if (onProgress) {
+                    onProgress(progress);
+                }
+            });
+            ytDlpEventEmitter.on('close', () => {
+                resolve();
+            });
+            ytDlpEventEmitter.on('error', (error) => {
+                reject(error);
+            });
+        });
+        if (!fs_1.default.existsSync(outputFilePath)) {
+            throw new Error('yt-dlp finished but output file was not created.');
+        }
     }
     catch (err) {
         console.error('Download failed:', err.message);
@@ -49,10 +77,7 @@ async function getVideoTitle(videoURL) {
         await ensureYTDlpBinary();
         const ytDlpWrap = new yt_dlp_wrap_1.default(ytDlpBinaryPath);
         const metadata = await ytDlpWrap.getVideoInfo(videoURL);
-        let title = metadata.title.trim();
-        // sanitize filename
-        title = title.replace(/[<>:"'/\\|?*]+/g, '');
-        return title;
+        return sanitizeVideoTitle(metadata.title);
     }
     catch (error) {
         console.error('Failed to get video title:', error);

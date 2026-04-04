@@ -1,1 +1,1 @@
-{"version":3,"file":"download.d.ts","sourceRoot":"","sources":["../../src/route/download.ts"],"names":[],"mappings":"AAGA,QAAA,MAAM,MAAM,4CAAmB,CAAC;AA+ChC,eAAe,MAAM,CAAC"}
+{"version":3,"file":"download.d.ts","sourceRoot":"","sources":["../../src/route/download.ts"],"names":[],"mappings":"AAAA,OAAgB,EAAqB,MAAM,EAAE,MAAM,SAAS,CAAC;AAQ7D,QAAA,MAAM,MAAM,EAAE,MAAyB,CAAC;AA+KxC,eAAe,MAAM,CAAC"}

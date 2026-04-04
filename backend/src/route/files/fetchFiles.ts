@@ -1,76 +1,43 @@
 import express from 'express';
 import type { Router } from 'express';
-import User from '../../lib/models/Users';
-import { connectDB } from '../../lib/clients/mongodb';
-import { maskUserID } from '../../lib/mask';
+import path from 'path';
+import { CreateSignedDownloadLink, DeleteFromS3, ListFilesFromS3 } from '../../lib/clients/s3';
 
 const router: Router = express.Router({ mergeParams: true });
+const TEMP_FOLDER = "temp";
 
-/**
- * @openapi
- * /api/files/fetch/{userID}:
- *   get:
- *     tags:
- *       - Files
- *     security: []
- *     summary: Fetch all active files for a user
- *     parameters:
- *       - in: path
- *         name: userID
- *         required: true
- *         schema:
- *           type: string
- *           example: 24BCE1234
- *     responses:
- *       200:
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   fileID:
- *                     type: string
- *                     example: file_abc123
- *                   name:
- *                     type: string
- *                     example: notes.pdf
- *                   size:
- *                     type: number
- *                     example: 245760
- *                   expiresAt:
- *                     type: string
- *                     format: date-time
- *                     example: 2026-01-20T12:00:00.000Z
- *       500:
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: Internal server error
- */
+function getOriginalName(fileID: string): string {
+    const baseName = path.posix.basename(fileID);
+    return baseName.replace(/^[0-9a-fA-F-]{36}-/, "");
+}
 
 router.get("/:userID", async (req, res) => {
     try {
-        await connectDB();
-        const { userID } = req.params;
-        const maskedID = maskUserID(userID.toUpperCase());
+        const now = new Date();
+        const files = await ListFilesFromS3(`${TEMP_FOLDER}/`);
+        const activeFiles = [];
 
-        let user = await User.findOne({ UserID: maskedID });
+        for (const file of files) {
+            const expiresAt = new Date((file.lastModified ?? now).getTime() + 24 * 60 * 60 * 1000);
 
-        if (!user) {
-            return res.json([]);
+            if (expiresAt <= now) {
+                await DeleteFromS3(file.key);
+                continue;
+            }
+
+            const name = getOriginalName(file.key);
+            const downloadUrl = await CreateSignedDownloadLink(file.key, 24 * 60 * 60);
+            activeFiles.push({
+                fileID: path.posix.basename(file.key),
+                extension: path.posix.extname(name).replace(".", ""),
+                name,
+                size: file.size,
+                expiresAt,
+                downloadUrl,
+            });
         }
 
-        const now = new Date();
-        user.files = user.files.filter(file => file.expiresAt > now);
-        await user.save();
-
-        res.json(user.files);
+        res.json(activeFiles);
     } catch (error) {
         console.error("Error fetching files:", error);
         res.status(500).json({ error: "Internal server error" });

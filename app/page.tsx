@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowDownToLine, Link as LinkIcon, LoaderCircle, Play } from "lucide-react";
+import { ArrowDownToLine, Link as LinkIcon, LoaderCircle, Play, Clipboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,22 @@ function getFileNameFromDisposition(contentDisposition: string | null): string {
   return match?.[1] ?? "video.mp4";
 }
 
+type DownloadApiResponse = {
+  message: string;
+  fileName: string;
+  fileKey: string;
+  fileID: string;
+  downloadUrl: string;
+  expiresInSeconds: number;
+};
+
+type DownloadProgressEvent = {
+  percent: number | null;
+  totalSize: string | null;
+  currentSpeed: string | null;
+  eta: string | null;
+};
+
 export default function Home() {
   const [videoLink, setVideoLink] = useState("");
   const [status, setStatus] = useState("Idle");
@@ -23,11 +39,17 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const [downloadLink, setDownloadLink] = useState<string | null>(null);
   const [downloadFileName, setDownloadFileName] = useState("video.mp4");
   const blobUrlRef = useRef<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
       }
@@ -50,12 +72,18 @@ export default function Home() {
     }
 
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-    const endpoint = `${apiBase}/api/download?url=${encodeURIComponent(videoLink)}`;
+    const endpoint = `${apiBase}/api/download?stream=1&url=${encodeURIComponent(videoLink)}`;
 
     setError(null);
     setStatus("Preparing download...");
     setIsDownloading(true);
-    setProgress(5);
+    setProgress(0);
+    setDownloadLink(null);
+
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
 
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current);
@@ -63,53 +91,72 @@ export default function Home() {
       setVideoBlobUrl(null);
     }
 
-    const request = new XMLHttpRequest();
-    request.open("GET", endpoint, true);
-    request.responseType = "blob";
+    try {
+      const eventSource = new EventSource(endpoint);
+      eventSourceRef.current = eventSource;
 
-    const progressTimer = setInterval(() => {
-      setProgress((current) => (current < 90 ? current + 2 : current));
-    }, 250);
+      await new Promise<void>((resolve, reject) => {
+        eventSource.addEventListener("status", (event) => {
+          const messageEvent = event as MessageEvent<string>;
+          const payload = JSON.parse(messageEvent.data) as { message?: string };
 
-    request.onprogress = (downloadEvent) => {
-      if (downloadEvent.lengthComputable && downloadEvent.total > 0) {
-        const nextProgress = Math.round((downloadEvent.loaded / downloadEvent.total) * 100);
-        setProgress(Math.max(5, Math.min(nextProgress, 99)));
-      }
-    };
+          if (payload.message) {
+            setStatus(payload.message);
+          }
+        });
 
-    request.onload = () => {
-      clearInterval(progressTimer);
+        eventSource.addEventListener("progress", (event) => {
+          const progressEvent = event as MessageEvent<string>;
+          const payload = JSON.parse(progressEvent.data) as DownloadProgressEvent;
+          const percent = typeof payload.percent === "number" ? payload.percent : null;
 
-      if (request.status < 200 || request.status >= 300) {
-        setStatus("Failed");
-        setIsDownloading(false);
-        setProgress(0);
-        setError("Download failed. Check the link and try again.");
-        return;
-      }
+          if (percent !== null) {
+            setProgress(percent);
+          }
 
-      const fileName = getFileNameFromDisposition(request.getResponseHeader("content-disposition"));
-      const blob = request.response;
-      const objectUrl = URL.createObjectURL(blob);
+          const speedPart = payload.currentSpeed ? ` at ${payload.currentSpeed}` : "";
+          const sizePart = payload.totalSize ? ` of ${payload.totalSize}` : "";
+          const etaPart = payload.eta ? `, ETA ${payload.eta}` : "";
+          setStatus(`Downloading${sizePart}${speedPart}${etaPart}`);
+        });
 
-      blobUrlRef.current = objectUrl;
-      setDownloadFileName(fileName);
-      setVideoBlobUrl(objectUrl);
-      setProgress(100);
-      setStatus("Ready");
-      setIsDownloading(false);
-    };
+        eventSource.addEventListener("complete", (event) => {
+          const completeEvent = event as MessageEvent<string>;
+          const data = JSON.parse(completeEvent.data) as DownloadApiResponse;
 
-    request.onerror = () => {
-      clearInterval(progressTimer);
+          eventSource.close();
+          eventSourceRef.current = null;
+
+          setProgress(100);
+          setStatus("Ready");
+          setIsDownloading(false);
+          setDownloadFileName(data.fileName || getFileNameFromDisposition(null));
+          setDownloadLink(data.downloadUrl);
+          setVideoBlobUrl(data.downloadUrl);
+          resolve();
+        });
+
+        eventSource.addEventListener("error", () => {
+          eventSource.close();
+          eventSourceRef.current = null;
+          reject(new Error("Download failed"));
+        });
+      });
+    } catch {
       setStatus("Failed");
       setIsDownloading(false);
       setProgress(0);
       setError("Network error while downloading video.");
-    };
+    }
+  }
 
-    request.send();
+  async function pasteURL() {
+    try {
+      const text = await navigator.clipboard.readText();
+      setVideoLink(text);
+    } catch (err) {
+      console.error("Failed to read clipboard:", err);
+    }
   }
 
   return (
@@ -136,6 +183,10 @@ export default function Home() {
                   onChange={(event) => setVideoLink(event.target.value)}
                 />
               </div>
+              <Button className="h-10 px-4" type="button" disabled={isDownloading} onClick={() => pasteURL()}>
+                <Clipboard className="size-4" />
+                Paste
+              </Button>
               <Button className="h-10 px-4" type="submit" disabled={isDownloading}>
                 {isDownloading ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
                 {isDownloading ? "Downloading" : "Download"}
@@ -168,7 +219,7 @@ export default function Home() {
                 src={videoBlobUrl}
               />
               <Button asChild variant="outline">
-                <a href={videoBlobUrl} download={downloadFileName}>
+                <a href={downloadLink ?? videoBlobUrl} download={downloadFileName}>
                   Save Video
                 </a>
               </Button>
