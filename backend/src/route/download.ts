@@ -66,20 +66,21 @@ async function processVideoDownload(videoURL: string, onProgress?: (progress: Do
         fs.mkdirSync(localTempDir, { recursive: true });
     }
 
-    await DownloadVideoToFile(videoURL, localFilePath, (progress) => {
+    const downloadedFilePath = await DownloadVideoToFile(videoURL, localFilePath, (progress) => {
         if (onProgress) {
             onProgress(progress);
         }
     });
 
-    const fileReadStream = fs.createReadStream(localFilePath);
+    const fileReadStream = fs.createReadStream(downloadedFilePath);
+    const contentType = path.extname(downloadedFilePath).toLowerCase() === ".mp4" ? "video/mp4" : "application/octet-stream";
 
     try {
         await withTimeout(
             UploadStreamToS3({
                 key: fileKey,
                 body: fileReadStream,
-                contentType: "video/mp4"
+                contentType
             }),
             DOWNLOAD_TIMEOUT_MS,
             "Video download timed out."
@@ -89,9 +90,9 @@ async function processVideoDownload(videoURL: string, onProgress?: (progress: Do
         throw uploadError;
     } finally {
         try {
-            fs.unlinkSync(localFilePath);
+            fs.unlinkSync(downloadedFilePath);
         } catch (cleanupError) {
-            console.warn(`Failed to clean temp file: ${localFilePath}`, cleanupError);
+            console.warn(`Failed to clean temp file: ${downloadedFilePath}`, cleanupError);
         }
     }
 
