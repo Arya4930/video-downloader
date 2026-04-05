@@ -31,6 +31,53 @@ async function ensureYTDlpBinary() {
         console.log('yt-dlp binary already exists.');
     }
 }
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function normalizePathFromYtDlp(rawPath) {
+    return rawPath
+        .replace(/\x1B\[[0-9;]*m/g, '')
+        .replace(/^"|"$/g, '')
+        .trim();
+}
+async function waitForExistingPath(candidatePath, retries = 10, delayMs = 200) {
+    for (let i = 0; i < retries; i += 1) {
+        if (fs_1.default.existsSync(candidatePath)) {
+            return true;
+        }
+        await sleep(delayMs);
+    }
+    return false;
+}
+async function resolveDownloadedFilePath(expectedPath, reportedPath) {
+    const normalizedReportedPath = normalizePathFromYtDlp(reportedPath);
+    const normalizedExpectedPath = normalizePathFromYtDlp(expectedPath);
+    if (await waitForExistingPath(normalizedReportedPath)) {
+        return normalizedReportedPath;
+    }
+    if (await waitForExistingPath(normalizedExpectedPath)) {
+        return normalizedExpectedPath;
+    }
+    const outputDir = path_1.default.dirname(normalizedExpectedPath);
+    const expectedName = path_1.default.basename(normalizedExpectedPath);
+    const expectedPrefix = path_1.default.parse(expectedName).name;
+    if (!fs_1.default.existsSync(outputDir)) {
+        return null;
+    }
+    const candidate = fs_1.default
+        .readdirSync(outputDir)
+        .filter((name) => name.startsWith(expectedPrefix) && !name.endsWith('.part'))
+        .sort((a, b) => {
+        const aTime = fs_1.default.statSync(path_1.default.join(outputDir, a)).mtimeMs;
+        const bTime = fs_1.default.statSync(path_1.default.join(outputDir, b)).mtimeMs;
+        return bTime - aTime;
+    })[0];
+    if (!candidate) {
+        return null;
+    }
+    const candidatePath = path_1.default.join(outputDir, candidate);
+    return fs_1.default.existsSync(candidatePath) ? candidatePath : null;
+}
 async function DownloadVideoToFile(videoURL, outputFilePath, onProgress) {
     try {
         await ensureYTDlpBinary();
@@ -89,11 +136,9 @@ async function DownloadVideoToFile(videoURL, outputFilePath, onProgress) {
                 reject(error);
             });
         });
-        if (fs_1.default.existsSync(downloadedFilePath)) {
-            return downloadedFilePath;
-        }
-        if (fs_1.default.existsSync(outputFilePath)) {
-            return outputFilePath;
+        const resolvedDownloadedPath = await resolveDownloadedFilePath(outputFilePath, downloadedFilePath);
+        if (resolvedDownloadedPath) {
+            return resolvedDownloadedPath;
         }
         throw new Error(`yt-dlp finished but output file was not created. Expected: ${outputFilePath}, yt-dlp reported: ${downloadedFilePath}`);
     }

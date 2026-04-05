@@ -33,6 +33,66 @@ export type YtDlpProgress = {
     eta?: string;
 };
 
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizePathFromYtDlp(rawPath: string): string {
+    return rawPath
+        .replace(/\x1B\[[0-9;]*m/g, '')
+        .replace(/^"|"$/g, '')
+        .trim();
+}
+
+async function waitForExistingPath(candidatePath: string, retries = 10, delayMs = 200): Promise<boolean> {
+    for (let i = 0; i < retries; i += 1) {
+        if (fs.existsSync(candidatePath)) {
+            return true;
+        }
+
+        await sleep(delayMs);
+    }
+
+    return false;
+}
+
+async function resolveDownloadedFilePath(expectedPath: string, reportedPath: string): Promise<string | null> {
+    const normalizedReportedPath = normalizePathFromYtDlp(reportedPath);
+    const normalizedExpectedPath = normalizePathFromYtDlp(expectedPath);
+
+    if (await waitForExistingPath(normalizedReportedPath)) {
+        return normalizedReportedPath;
+    }
+
+    if (await waitForExistingPath(normalizedExpectedPath)) {
+        return normalizedExpectedPath;
+    }
+
+    const outputDir = path.dirname(normalizedExpectedPath);
+    const expectedName = path.basename(normalizedExpectedPath);
+    const expectedPrefix = path.parse(expectedName).name;
+
+    if (!fs.existsSync(outputDir)) {
+        return null;
+    }
+
+    const candidate = fs
+        .readdirSync(outputDir)
+        .filter((name) => name.startsWith(expectedPrefix) && !name.endsWith('.part'))
+        .sort((a, b) => {
+            const aTime = fs.statSync(path.join(outputDir, a)).mtimeMs;
+            const bTime = fs.statSync(path.join(outputDir, b)).mtimeMs;
+            return bTime - aTime;
+        })[0];
+
+    if (!candidate) {
+        return null;
+    }
+
+    const candidatePath = path.join(outputDir, candidate);
+    return fs.existsSync(candidatePath) ? candidatePath : null;
+}
+
 export async function DownloadVideoToFile(
     videoURL: string,
     outputFilePath: string,
@@ -111,12 +171,9 @@ export async function DownloadVideoToFile(
             });
         });
 
-        if (fs.existsSync(downloadedFilePath)) {
-            return downloadedFilePath;
-        }
-
-        if (fs.existsSync(outputFilePath)) {
-            return outputFilePath;
+        const resolvedDownloadedPath = await resolveDownloadedFilePath(outputFilePath, downloadedFilePath);
+        if (resolvedDownloadedPath) {
+            return resolvedDownloadedPath;
         }
 
         throw new Error(`yt-dlp finished but output file was not created. Expected: ${outputFilePath}, yt-dlp reported: ${downloadedFilePath}`);
