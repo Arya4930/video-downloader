@@ -50,17 +50,18 @@ async function processVideoDownload(videoURL, onProgress) {
     if (!fs_1.default.existsSync(localTempDir)) {
         fs_1.default.mkdirSync(localTempDir, { recursive: true });
     }
-    await (0, downloadVideo_1.DownloadVideoToFile)(videoURL, localFilePath, (progress) => {
+    const downloadedFilePath = await (0, downloadVideo_1.DownloadVideoToFile)(videoURL, localFilePath, (progress) => {
         if (onProgress) {
             onProgress(progress);
         }
     });
-    const fileReadStream = fs_1.default.createReadStream(localFilePath);
+    const fileReadStream = fs_1.default.createReadStream(downloadedFilePath);
+    const contentType = path_1.default.extname(downloadedFilePath).toLowerCase() === ".mp4" ? "video/mp4" : "application/octet-stream";
     try {
         await withTimeout((0, s3_1.UploadStreamToS3)({
             key: fileKey,
             body: fileReadStream,
-            contentType: "video/mp4"
+            contentType
         }), DOWNLOAD_TIMEOUT_MS, "Video download timed out.");
     }
     catch (uploadError) {
@@ -69,10 +70,10 @@ async function processVideoDownload(videoURL, onProgress) {
     }
     finally {
         try {
-            fs_1.default.unlinkSync(localFilePath);
+            fs_1.default.unlinkSync(downloadedFilePath);
         }
         catch (cleanupError) {
-            console.warn(`Failed to clean temp file: ${localFilePath}`, cleanupError);
+            console.warn(`Failed to clean temp file: ${downloadedFilePath}`, cleanupError);
         }
     }
     const expiresInSeconds = 60 * 60;

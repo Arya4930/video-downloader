@@ -41,7 +41,7 @@ async function DownloadVideoToFile(videoURL, outputFilePath, onProgress) {
         const ytDlpWrap = new yt_dlp_wrap_1.default(ytDlpBinaryPath);
         console.log('Starting video download...');
         const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
-        await new Promise((resolve, reject) => {
+        const downloadedFilePath = await new Promise((resolve, reject) => {
             const args = [
                 videoURL,
                 '--no-playlist',
@@ -57,26 +57,45 @@ async function DownloadVideoToFile(videoURL, outputFilePath, onProgress) {
                 'bestvideo+bestaudio/best',
                 '--merge-output-format',
                 'mp4',
+                '--print',
+                'after_move:filepath',
                 '-o',
                 outputFilePath
             ];
             console.log(args);
             const ytDlpEventEmitter = ytDlpWrap.exec(args);
+            let finalPathFromYtDlp = null;
             ytDlpEventEmitter.on('progress', (progress) => {
                 if (onProgress) {
                     onProgress(progress);
                 }
             });
-            ytDlpEventEmitter.on('close', () => {
-                resolve();
+            ytDlpEventEmitter.on('ytDlpEvent', (eventType, eventData) => {
+                if (eventType === 'CustomEvent' && typeof eventData === 'string') {
+                    const trimmed = eventData.trim();
+                    if (trimmed.length > 0) {
+                        finalPathFromYtDlp = trimmed;
+                    }
+                }
+            });
+            ytDlpEventEmitter.on('close', (code) => {
+                if (code !== 0) {
+                    reject(new Error(`yt-dlp exited with code ${code}.`));
+                    return;
+                }
+                resolve(finalPathFromYtDlp ?? outputFilePath);
             });
             ytDlpEventEmitter.on('error', (error) => {
                 reject(error);
             });
         });
-        if (!fs_1.default.existsSync(outputFilePath)) {
-            throw new Error('yt-dlp finished but output file was not created.');
+        if (fs_1.default.existsSync(downloadedFilePath)) {
+            return downloadedFilePath;
         }
+        if (fs_1.default.existsSync(outputFilePath)) {
+            return outputFilePath;
+        }
+        throw new Error(`yt-dlp finished but output file was not created. Expected: ${outputFilePath}, yt-dlp reported: ${downloadedFilePath}`);
     }
     catch (err) {
         console.error('Download failed:', err.message);

@@ -81,7 +81,6 @@ export async function DownloadVideoToFile(
             console.log(args);
             const ytDlpEventEmitter = ytDlpWrap.exec(args);
             let finalPathFromYtDlp: string | null = null;
-            let stderrOutput = '';
 
             ytDlpEventEmitter.on('progress', (progress: YtDlpProgress) => {
                 if (onProgress) {
@@ -98,13 +97,9 @@ export async function DownloadVideoToFile(
                 }
             });
 
-            ytDlpEventEmitter.on('stderr', (stderr: string | Buffer) => {
-                stderrOutput += stderr.toString();
-            });
-
-            ytDlpEventEmitter.on('close', (code: number) => {
+            ytDlpEventEmitter.on('close', (code: number | null) => {
                 if (code !== 0) {
-                    reject(new Error(`yt-dlp exited with code ${code}. ${stderrOutput}`.trim()));
+                    reject(new Error(`yt-dlp exited with code ${code}.`));
                     return;
                 }
 
