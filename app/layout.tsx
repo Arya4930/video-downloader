@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title: "Normal Video Downloader",
   description: "Fast, no-hassle video downloads for friends.",
   applicationName: "Normal Video Downloader",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.json",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
