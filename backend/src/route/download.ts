@@ -56,7 +56,7 @@ function shouldUseSse(req: Request): boolean {
 async function processVideoDownload(videoURL: string, onProgress?: (progress: DownloadProgress) => void): Promise<DownloadResult> {
     const title = (await getVideoTitle(videoURL)) ?? "video";
     const safeTitle = title.replace(/[^a-zA-Z0-9_-]/g, "");
-    const fileName = `${safeTitle || "video"}.mp4`;
+    const fileName = `${safeTitle || "video"}`;
     const fileID = `${Date.now()}-${randomUUID()}-${fileName}`;
     const fileKey = `${TEMP_FOLDER}/${fileID}`;
     const localTempDir = path.join(os.tmpdir(), "video-downloader-temp");

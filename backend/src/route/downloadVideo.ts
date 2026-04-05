@@ -48,22 +48,35 @@ export async function DownloadVideoToFile(
 
         const ytDlpWrap = new YTDlpWrap(ytDlpBinaryPath);
         console.log('Starting video download...');
+        const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
 
         await new Promise<void>((resolve, reject) => {
-            const ytDlpEventEmitter = ytDlpWrap.exec([
+            const args = [
                 videoURL,
                 '--no-playlist',
                 '--newline',
                 '--no-warnings',
+
+                '--proxy',
+                proxy,
+
                 '--cookies',
                 '/home/ubuntu/video-downloader/cookies.txt',
+
                 '--user-agent',
                 'Mozilla/5.0',
+
+                '--format',
+                'bestvideo+bestaudio/best',
+
                 '--merge-output-format',
                 'mp4',
+
                 '-o',
                 outputFilePath
-            ]);
+            ];
+            console.log(args);
+            const ytDlpEventEmitter = ytDlpWrap.exec(args);
 
             ytDlpEventEmitter.on('progress', (progress: YtDlpProgress) => {
                 if (onProgress) {
