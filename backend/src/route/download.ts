@@ -1,6 +1,6 @@
 import express, { Request, Response, Router } from "express";
 import { DownloadVideoToFile, getVideoTitle, YtDlpProgress } from "./downloadVideo";
-import { CreateSignedDownloadLink, DeleteFromS3, UploadStreamToS3 } from "../lib/clients/s3";
+import { CreateSignedDownloadLink, DeleteFromS3, StreamFileFromS3, UploadStreamToS3 } from "../lib/clients/s3";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
@@ -56,7 +56,7 @@ function shouldUseSse(req: Request): boolean {
 async function processVideoDownload(videoURL: string, onProgress?: (progress: DownloadProgress) => void): Promise<DownloadResult> {
     const title = (await getVideoTitle(videoURL)) ?? "video";
     const safeTitle = title.replace(/[^a-zA-Z0-9_-]/g, "");
-    const fileName = `${safeTitle || "video"}`;
+    const fileName = `${safeTitle || "video"}.mp4`;
     const fileID = `${Date.now()}-${randomUUID()}-${fileName}`;
     const fileKey = `${TEMP_FOLDER}/${fileID}`;
     const localTempDir = path.join(os.tmpdir(), "video-downloader-temp");
@@ -179,6 +179,33 @@ async function streamVideo(req: Request, res: Response) {
         res.end();
     }
 }
+
+router.get("/file/:fileID", async (req: Request, res: Response) => {
+    try {
+        const rawFileID = req.params.fileID;
+        if (!rawFileID || Array.isArray(rawFileID)) {
+            return res.status(400).json({ error: "Missing file ID." });
+        }
+
+        const fileID = path.posix.basename(rawFileID);
+        const requestedName = typeof req.query.name === "string" ? req.query.name.trim() : "";
+        const safeName = requestedName
+            ? path.posix.basename(requestedName).replace(/[\r\n]/g, "")
+            : fileID.replace(/^[0-9]+-[0-9a-fA-F-]{36}-/, "");
+
+        const fileName = safeName && path.posix.extname(safeName) ? safeName : `${safeName || "video"}.mp4`;
+
+        await StreamFileFromS3(`${TEMP_FOLDER}/${fileID}`, res, fileName);
+    } catch (error) {
+        console.error("Attachment download failed:", error);
+
+        if (!res.headersSent) {
+            return res.status(500).json({ error: "Failed to download file." });
+        }
+
+        res.end();
+    }
+});
 
 router.get("/", streamVideo);
 

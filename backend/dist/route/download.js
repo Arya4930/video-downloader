@@ -42,7 +42,7 @@ function shouldUseSse(req) {
 async function processVideoDownload(videoURL, onProgress) {
     const title = (await (0, downloadVideo_1.getVideoTitle)(videoURL)) ?? "video";
     const safeTitle = title.replace(/[^a-zA-Z0-9_-]/g, "");
-    const fileName = `${safeTitle || "video"}`;
+    const fileName = `${safeTitle || "video"}.mp4`;
     const fileID = `${Date.now()}-${(0, crypto_1.randomUUID)()}-${fileName}`;
     const fileKey = `${TEMP_FOLDER}/${fileID}`;
     const localTempDir = path_1.default.join(os_1.default.tmpdir(), "video-downloader-temp");
@@ -146,6 +146,28 @@ async function streamVideo(req, res) {
         res.end();
     }
 }
+router.get("/file/:fileID", async (req, res) => {
+    try {
+        const rawFileID = req.params.fileID;
+        if (!rawFileID || Array.isArray(rawFileID)) {
+            return res.status(400).json({ error: "Missing file ID." });
+        }
+        const fileID = path_1.default.posix.basename(rawFileID);
+        const requestedName = typeof req.query.name === "string" ? req.query.name.trim() : "";
+        const safeName = requestedName
+            ? path_1.default.posix.basename(requestedName).replace(/[\r\n]/g, "")
+            : fileID.replace(/^[0-9]+-[0-9a-fA-F-]{36}-/, "");
+        const fileName = safeName && path_1.default.posix.extname(safeName) ? safeName : `${safeName || "video"}.mp4`;
+        await (0, s3_1.StreamFileFromS3)(`${TEMP_FOLDER}/${fileID}`, res, fileName);
+    }
+    catch (error) {
+        console.error("Attachment download failed:", error);
+        if (!res.headersSent) {
+            return res.status(500).json({ error: "Failed to download file." });
+        }
+        res.end();
+    }
+});
 router.get("/", streamVideo);
 exports.default = router;
 //# sourceMappingURL=download.js.map

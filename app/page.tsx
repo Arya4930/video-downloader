@@ -45,6 +45,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
   const [downloadLink, setDownloadLink] = useState<string | null>(null);
+  const [attachmentLink, setAttachmentLink] = useState<string | null>(null);
   const [downloadFileName, setDownloadFileName] = useState("video.mp4");
   const blobUrlRef = useRef<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -83,6 +84,7 @@ export default function Home() {
     setIsDownloading(true);
     setProgress(0);
     setDownloadLink(null);
+    setAttachmentLink(null);
 
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -136,6 +138,9 @@ export default function Home() {
           setIsDownloading(false);
           setDownloadFileName(data.fileName || getFileNameFromDisposition(null));
           setDownloadLink(data.downloadUrl);
+          setAttachmentLink(
+            `${API_BASE}/api/download/file/${encodeURIComponent(data.fileID)}?name=${encodeURIComponent(data.fileName || "video.mp4")}`
+          );
           setVideoBlobUrl(data.downloadUrl);
           resolve();
         });
@@ -225,7 +230,7 @@ export default function Home() {
                 src={videoBlobUrl}
               />
               <Button asChild variant="outline">
-                <a href={downloadLink ?? videoBlobUrl} download={downloadFileName}>
+                <a href={attachmentLink ?? downloadLink ?? videoBlobUrl} download={downloadFileName}>
                   Save Video
                 </a>
               </Button>
