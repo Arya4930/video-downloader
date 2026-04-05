@@ -9,6 +9,7 @@ const yt_dlp_wrap_1 = __importDefault(require("yt-dlp-wrap"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const ytDlpBinaryPath = path_1.default.join(__dirname, 'yt-dlp');
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.m4v']);
 function sanitizeVideoTitle(title) {
     return title
         .trim()
@@ -40,6 +41,9 @@ function normalizePathFromYtDlp(rawPath) {
         .replace(/^"|"$/g, '')
         .trim();
 }
+function isVideoFilePath(filePath) {
+    return VIDEO_EXTENSIONS.has(path_1.default.extname(filePath).toLowerCase());
+}
 async function waitForExistingPath(candidatePath, retries = 10, delayMs = 200) {
     for (let i = 0; i < retries; i += 1) {
         if (fs_1.default.existsSync(candidatePath)) {
@@ -52,10 +56,10 @@ async function waitForExistingPath(candidatePath, retries = 10, delayMs = 200) {
 async function resolveDownloadedFilePath(expectedPath, reportedPath) {
     const normalizedReportedPath = normalizePathFromYtDlp(reportedPath);
     const normalizedExpectedPath = normalizePathFromYtDlp(expectedPath);
-    if (await waitForExistingPath(normalizedReportedPath)) {
+    if (isVideoFilePath(normalizedReportedPath) && await waitForExistingPath(normalizedReportedPath)) {
         return normalizedReportedPath;
     }
-    if (await waitForExistingPath(normalizedExpectedPath)) {
+    if (isVideoFilePath(normalizedExpectedPath) && await waitForExistingPath(normalizedExpectedPath)) {
         return normalizedExpectedPath;
     }
     const outputDir = path_1.default.dirname(normalizedExpectedPath);
@@ -66,7 +70,13 @@ async function resolveDownloadedFilePath(expectedPath, reportedPath) {
     }
     const candidate = fs_1.default
         .readdirSync(outputDir)
-        .filter((name) => name.startsWith(expectedPrefix) && !name.endsWith('.part'))
+        .filter((name) => {
+        if (!name.startsWith(expectedPrefix) || name.endsWith('.part')) {
+            return false;
+        }
+        const candidatePath = path_1.default.join(outputDir, name);
+        return isVideoFilePath(candidatePath);
+    })
         .sort((a, b) => {
         const aTime = fs_1.default.statSync(path_1.default.join(outputDir, a)).mtimeMs;
         const bTime = fs_1.default.statSync(path_1.default.join(outputDir, b)).mtimeMs;
@@ -101,7 +111,7 @@ async function DownloadVideoToFile(videoURL, outputFilePath, onProgress) {
                 '--user-agent',
                 'Mozilla/5.0',
                 '--format',
-                'bestvideo+bestaudio/best',
+                'bestvideo+bestaudio/best[vcodec!=none]',
                 '--merge-output-format',
                 'mp4',
                 '--print',

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 
 const ytDlpBinaryPath = path.join(__dirname, 'yt-dlp');
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.m4v']);
 
 function sanitizeVideoTitle(title: string): string {
     return title
@@ -44,6 +45,10 @@ function normalizePathFromYtDlp(rawPath: string): string {
         .trim();
 }
 
+function isVideoFilePath(filePath: string): boolean {
+    return VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
 async function waitForExistingPath(candidatePath: string, retries = 10, delayMs = 200): Promise<boolean> {
     for (let i = 0; i < retries; i += 1) {
         if (fs.existsSync(candidatePath)) {
@@ -60,11 +65,11 @@ async function resolveDownloadedFilePath(expectedPath: string, reportedPath: str
     const normalizedReportedPath = normalizePathFromYtDlp(reportedPath);
     const normalizedExpectedPath = normalizePathFromYtDlp(expectedPath);
 
-    if (await waitForExistingPath(normalizedReportedPath)) {
+    if (isVideoFilePath(normalizedReportedPath) && await waitForExistingPath(normalizedReportedPath)) {
         return normalizedReportedPath;
     }
 
-    if (await waitForExistingPath(normalizedExpectedPath)) {
+    if (isVideoFilePath(normalizedExpectedPath) && await waitForExistingPath(normalizedExpectedPath)) {
         return normalizedExpectedPath;
     }
 
@@ -78,7 +83,14 @@ async function resolveDownloadedFilePath(expectedPath: string, reportedPath: str
 
     const candidate = fs
         .readdirSync(outputDir)
-        .filter((name) => name.startsWith(expectedPrefix) && !name.endsWith('.part'))
+        .filter((name) => {
+            if (!name.startsWith(expectedPrefix) || name.endsWith('.part')) {
+                return false;
+            }
+
+            const candidatePath = path.join(outputDir, name);
+            return isVideoFilePath(candidatePath);
+        })
         .sort((a, b) => {
             const aTime = fs.statSync(path.join(outputDir, a)).mtimeMs;
             const bTime = fs.statSync(path.join(outputDir, b)).mtimeMs;
@@ -127,7 +139,7 @@ export async function DownloadVideoToFile(
                 'Mozilla/5.0',
 
                 '--format',
-                'bestvideo+bestaudio/best',
+                'bestvideo+bestaudio/best[vcodec!=none]',
 
                 '--merge-output-format',
                 'mp4',
