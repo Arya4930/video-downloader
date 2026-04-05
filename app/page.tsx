@@ -176,8 +176,8 @@ export default function Home() {
             <label className="sr-only" htmlFor="video-link">
               Video URL
             </label>
-            <div className="flex items-center gap-2">
-              <div className="relative grow">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative w-full sm:grow">
                 <LinkIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="video-link"
@@ -187,14 +187,16 @@ export default function Home() {
                   onChange={(event) => setVideoLink(event.target.value)}
                 />
               </div>
-              <Button className="h-10 px-4" type="button" disabled={isDownloading} onClick={() => pasteURL()}>
-                <Clipboard className="size-4" />
-                Paste
-              </Button>
-              <Button className="h-10 px-4" type="submit" disabled={isDownloading}>
-                {isDownloading ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
-                {isDownloading ? "Downloading" : "Download"}
-              </Button>
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-none">
+                <Button className="h-10 w-full px-3 sm:w-auto sm:px-4" type="button" disabled={isDownloading} onClick={() => pasteURL()}>
+                  <Clipboard className="size-4" />
+                  Paste
+                </Button>
+                <Button className="h-10 w-full px-3 sm:w-auto sm:px-4" type="submit" disabled={isDownloading}>
+                  {isDownloading ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowDownToLine className="size-4" />}
+                  {isDownloading ? "Downloading" : "Download"}
+                </Button>
+              </div>
             </div>
           </form>
 
